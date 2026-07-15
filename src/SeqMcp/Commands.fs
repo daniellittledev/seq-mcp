@@ -72,3 +72,25 @@ let listSignals (client: SeqClient) (nameFilter: string) : Task<string> =
         let! signals = client.ListSignalsAsync()
         return Render.signals nameFilter signals
     }
+
+/// List configured alerts as Id · Title lines, optionally filtered by title substring.
+let listAlerts (client: SeqClient) (nameFilter: string) : Task<string> =
+    task {
+        let! alerts = client.ListAlertsAsync()
+        return Render.alerts nameFilter alerts
+    }
+
+/// Full detail for a single alert by its id.
+let getAlert (client: SeqClient) (id: string) : Task<string> =
+    task {
+        let! a = client.GetAlertAsync id
+        return Render.alertDetail a
+    }
+
+/// Current firing state of alerts, derived from each alert's embedded Activity
+/// (readable with a plain read key, unlike /api/alertstate which needs Project).
+let alertState (client: SeqClient) : Task<string> =
+    task {
+        let! alerts = client.ListAlertsAsync()
+        return Render.alertState alerts
+    }

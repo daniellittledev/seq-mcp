@@ -1,6 +1,7 @@
 namespace SeqMcp
 
 open System
+open System.Globalization
 open System.Text
 open System.Text.Json
 
@@ -112,3 +113,117 @@ module internal Render =
                 sb.AppendLine(sprintf "… %d more (use a name filter)" (matches.Length - 50)) |> ignore
 
             sb.ToString().TrimEnd()
+
+    /// Render alerts as `Id · Title` lines (with a `· [disabled]` marker),
+    /// filtered by an optional title substring. Mirrors `signals`.
+    let alerts (nameFilter: string) (items: Alert[]) =
+        let matches =
+            if isNull (box items) then
+                [||]
+            elif String.IsNullOrWhiteSpace nameFilter then
+                items
+            else
+                items
+                |> Array.filter (fun a ->
+                    not (isNull a.Title)
+                    && a.Title.IndexOf(nameFilter, StringComparison.OrdinalIgnoreCase) >= 0)
+
+        if matches.Length = 0 then
+            "No alerts."
+        else
+            let sb = StringBuilder()
+
+            for a in Array.truncate 50 matches do
+                let disabled = if a.IsDisabled then " · [disabled]" else ""
+                sb.AppendLine(sprintf "%s · %s%s" a.Id a.Title disabled) |> ignore
+
+            if matches.Length > 50 then
+                sb.AppendLine(sprintf "… %d more (use a name filter)" (matches.Length - 50)) |> ignore
+
+            sb.ToString().TrimEnd()
+
+    /// Render a single alert in full: header, metadata, condition, channels, activity.
+    let alertDetail (a: Alert) =
+        let sb = StringBuilder()
+        let disabled = if a.IsDisabled then " · [disabled]" else ""
+        sb.AppendLine(sprintf "%s · %s%s" a.Id a.Title disabled) |> ignore
+
+        if not (String.IsNullOrWhiteSpace a.Description) then
+            sb.AppendLine(a.Description.Trim()) |> ignore
+
+        let owner = if isNull a.OwnerId then "(none)" else a.OwnerId
+        sb.AppendLine(sprintf "Protected: %b · Owner: %s" a.IsProtected owner) |> ignore
+
+        if not (String.IsNullOrWhiteSpace a.Where) then
+            sb.AppendLine(sprintf "Where: %s" (a.Where.Trim())) |> ignore
+
+        if not (String.IsNullOrWhiteSpace a.Having) then
+            sb.AppendLine(sprintf "Having: %s" (a.Having.Trim())) |> ignore
+
+        if not (String.IsNullOrWhiteSpace a.TimeGrouping) then
+            sb.AppendLine(sprintf "Window: %s" a.TimeGrouping) |> ignore
+
+        if not (String.IsNullOrWhiteSpace a.NotificationLevel) then
+            sb.AppendLine(sprintf "Level: %s" a.NotificationLevel) |> ignore
+
+        if a.SignalExpression.ValueKind = JsonValueKind.Object then
+            sb.AppendLine(sprintf "Signal: %s" (cell a.SignalExpression)) |> ignore
+
+        let channels =
+            if isNull (box a.NotificationChannels) then [||] else a.NotificationChannels
+
+        if channels.Length > 0 then
+            sb.AppendLine(sprintf "Notification channels (%d):" channels.Length) |> ignore
+
+            for c in channels do
+                sb.AppendLine(sprintf "  %s" (cell c)) |> ignore
+
+        if not (isNull (box a.Activity)) then
+            let act = a.Activity
+            let triggered = if act.LastCheckTriggered then "triggered" else "ok"
+            let lastCheck = if isNull act.LastCheck then "" else act.LastCheck
+
+            sb.AppendLine(sprintf "Activity: %s · last check %s · %d total occurrences" triggered lastCheck act.TotalOccurrences)
+            |> ignore
+
+            if not (String.IsNullOrWhiteSpace act.SuppressedUntil) then
+                sb.AppendLine(sprintf "  suppressed until %s" act.SuppressedUntil) |> ignore
+
+        sb.ToString().TrimEnd()
+
+    /// Render the current firing state of alerts, derived from each alert's embedded
+    /// Activity (readable without Project permission). Lists only alerts whose last
+    /// evaluation triggered or that are currently suppressed after firing, as
+    /// `Id · Title · Status · N occurrences · last check`.
+    let alertState (items: Alert[]) =
+        // True only while the suppression window is still in the future; a stale
+        // timestamp from an elapsed window must not read as "currently firing".
+        let suppressedNow (s: string) =
+            not (String.IsNullOrWhiteSpace s)
+            && (match DateTimeOffset.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal) with
+                | true, until -> until > DateTimeOffset.UtcNow
+                | _ -> false)
+
+        let isActive (a: Alert) =
+            not (isNull (box a.Activity))
+            && (a.Activity.LastCheckTriggered || suppressedNow a.Activity.SuppressedUntil)
+
+        let active = if isNull (box items) then [||] else Array.filter isActive items
+
+        if active.Length = 0 then
+            "No alerts firing."
+        else
+            active
+            |> Array.map (fun a ->
+                let act = a.Activity
+
+                let status =
+                    if suppressedNow act.SuppressedUntil then
+                        sprintf "suppressed until %s" act.SuppressedUntil
+                    else
+                        "triggered"
+
+                let lastCheck = if isNull act.LastCheck then "" else act.LastCheck
+
+                sprintf "%s · %s · %s · %d occurrences · last check %s" a.Id a.Title status act.TotalOccurrences lastCheck)
+            |> String.concat "\n"

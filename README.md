@@ -14,6 +14,9 @@ raw JSON to keep token usage low.
 | `search_events(filter, count?, signal?)` | Events matching a Seq filter expression (e.g. `@Exception like '%timeout%'`), newest first (default: 30, last 24h). Optionally scope to a saved `signal` id. |
 | `get_event(id)` | Full detail for one event (the `Id` from the list tools): rendered message, exception/stack trace, and all properties. |
 | `list_signals(nameFilter?)` | Saved signals as `Id · Title` lines; the `Id` can scope `seq_query`/`search_events`. Pass a name substring to narrow the list. |
+| `list_alerts(nameFilter?)` | Configured alerts as `Id · Title` lines (with a `[disabled]` marker). Pass a name substring to narrow; the `Id` can be passed to `get_alert`. |
+| `get_alert(id)` | Full detail for one alert: title, description, enabled/disabled, protected status, owner, condition (where/having/window/level), notification channels, and recent activity. |
+| `alert_state()` | Alerts currently firing as `Id · Title · Status · Occurrences · Last check` lines, derived from each alert's activity (shows only alerts whose last check triggered or that are suppressed after recently firing). |
 
 ## Install
 
@@ -44,6 +47,9 @@ seq-mcp errors --minutes 30
 seq-mcp search "@Exception like '%timeout%'" --count 30
 seq-mcp event event-abc123
 seq-mcp signals --filter checkout
+seq-mcp alerts --filter checkout
+seq-mcp alert alert-123
+seq-mcp alert-state
 ```
 
 Output goes to stdout; errors go to stderr with a non-zero exit code. Configure the server with

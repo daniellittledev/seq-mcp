@@ -50,7 +50,19 @@ let specs =
       { name = "signals"
         summary = "List saved signals as Id · Title."
         args = []
-        opts = [ opt "filter" "Case-insensitive title substring" null ] } ]
+        opts = [ opt "filter" "Case-insensitive title substring" null ] }
+      { name = "alerts"
+        summary = "List configured alerts as Id · Title (with a [disabled] marker)."
+        args = []
+        opts = [ opt "filter" "Case-insensitive title substring" null ] }
+      { name = "alert"
+        summary = "Full detail for a single alert by its id."
+        args = [ "id" ]
+        opts = [] }
+      { name = "alert-state"
+        summary = "Alerts currently firing (Status · Occurrences · Last check)."
+        args = []
+        opts = [] } ]
 
 /// Split args into ordered positionals and a `--key value` map.
 let private parseArgs (argv: string list) =
@@ -105,6 +117,9 @@ let private dispatch (client: SeqClient) cmd (pos: string list) (flags: Map<stri
     | "search" -> Some(Commands.searchEvents client (arg 0) (flagInt "count" 30) (flag "signal"))
     | "event" -> Some(Commands.getEvent client (arg 0))
     | "signals" -> Some(Commands.listSignals client (flag "filter"))
+    | "alerts" -> Some(Commands.listAlerts client (flag "filter"))
+    | "alert" -> Some(Commands.getAlert client (arg 0))
+    | "alert-state" -> Some(Commands.alertState client)
     | _ -> None
 
 /// Entry point for the CLI path. `configureClient` registers the SeqClient the
