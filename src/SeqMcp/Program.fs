@@ -8,23 +8,19 @@ open Microsoft.Extensions.Hosting
 open Microsoft.Extensions.Logging
 open SeqMcp
 
-/// Register the typed Seq HTTP client (base address + X-Seq-ApiKey) from configuration.
-/// Shared by both the HTTP and stdio hosts.
-let private configureSeqClient (services: IServiceCollection) (config: IConfiguration) =
-    let serverUrl =
-        match config.["Seq:ServerUrl"] with
-        | null
-        | "" -> "http://localhost:5341"
-        | u -> u
+/// Build the environment registry from configuration and register it with the typed Seq
+/// HTTP client. The client carries no base address or default headers, so each request is
+/// routed and authenticated per environment. Shared by both the HTTP and stdio hosts.
+let private tryConfigureSeq (services: IServiceCollection) (config: IConfiguration) : Result<unit, string> =
+    SeqConfig.parse config
+    |> Result.map (fun envs ->
+        services.AddSingleton<SeqConfig.SeqEnvironments>(envs) |> ignore
+        services.AddHttpClient<SeqClient>() |> ignore)
 
-    let apiKey = config.["Seq:ApiKey"]
-
-    services.AddHttpClient<SeqClient>(fun http ->
-        http.BaseAddress <- Uri(serverUrl.TrimEnd('/') + "/")
-
-        if not (String.IsNullOrWhiteSpace apiKey) then
-            http.DefaultRequestHeaders.Add("X-Seq-ApiKey", apiKey))
-    |> ignore
+/// Config errors go to stderr (stdout is the JSON-RPC stream) and exit non-zero before the host is built.
+let private failConfig (msg: string) =
+    eprintfn "%s" msg
+    1
 
 /// stdio transport: the MCP client (e.g. Claude Code) launches this process and speaks
 /// JSON-RPC over stdin/stdout. Logs MUST go to stderr so they don't corrupt the protocol
@@ -35,39 +31,42 @@ let private runStdio (args: string[]) =
     builder.Logging.AddConsole(fun o -> o.LogToStandardErrorThreshold <- LogLevel.Trace)
     |> ignore
 
-    configureSeqClient builder.Services builder.Configuration
+    match tryConfigureSeq builder.Services builder.Configuration with
+    | Error msg -> failConfig msg
+    | Ok() ->
+        builder.Services
+            .AddMcpServer()
+            .WithStdioServerTransport()
+            .WithTools<SeqTools>()
+        |> ignore
 
-    builder.Services
-        .AddMcpServer()
-        .WithStdioServerTransport()
-        .WithTools<SeqTools>()
-    |> ignore
-
-    builder.Build().Run()
-    0
+        builder.Build().Run()
+        0
 
 /// HTTP (Streamable HTTP) transport: long-running server the MCP client connects to by URL.
 let private runHttp (args: string[]) =
     let builder = WebApplication.CreateBuilder(args)
-    configureSeqClient builder.Services builder.Configuration
 
-    builder.Services
-        .AddMcpServer()
-        .WithHttpTransport()
-        .WithTools<SeqTools>()
-    |> ignore
+    match tryConfigureSeq builder.Services builder.Configuration with
+    | Error msg -> failConfig msg
+    | Ok() ->
+        builder.Services
+            .AddMcpServer()
+            .WithHttpTransport()
+            .WithTools<SeqTools>()
+        |> ignore
 
-    let app = builder.Build()
-    app.MapMcp() |> ignore
+        let app = builder.Build()
+        app.MapMcp() |> ignore
 
-    // Default the listen address to :5250 for local/dev use; respect an explicit
-    // ASPNETCORE_URLS when the host sets one.
-    match Environment.GetEnvironmentVariable "ASPNETCORE_URLS" with
-    | null
-    | "" -> app.Run "http://localhost:5250"
-    | _ -> app.Run()
+        // Default the listen address to :5250 for local/dev use; respect an explicit
+        // ASPNETCORE_URLS when the host sets one.
+        match Environment.GetEnvironmentVariable "ASPNETCORE_URLS" with
+        | null
+        | "" -> app.Run "http://localhost:5250"
+        | _ -> app.Run()
 
-    0
+        0
 
 [<EntryPoint>]
 let main args =
