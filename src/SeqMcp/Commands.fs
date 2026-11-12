@@ -30,11 +30,13 @@ let private optional (s: string) =
     if String.IsNullOrWhiteSpace s then None else Some s
 
 /// Resolve the requested environment (blank → default), then run the call against it.
-/// An unknown environment is returned as text rather than thrown.
+/// An unknown environment faults the task so each front-end surfaces it the way it
+/// surfaces any other failure: the MCP tools as "Error: ..." text, the CLI on stderr
+/// with a non-zero exit code.
 let private inEnvironment (envs: SeqEnvironments) (environment: string) (call: SeqEnvironment -> Task<string>) : Task<string> =
     match resolve envs (optional environment) with
     | Ok env -> call env
-    | Error msg -> Task.FromResult msg
+    | Error msg -> Task.FromException<string>(System.Exception msg)
 
 /// Run a Seq SQL query. Time window defaults to the last 24 hours; pass ISO-8601
 /// UTC 'from'/'to' to override. Optionally scope to a saved signal id.
