@@ -4,10 +4,10 @@ open System
 open System.Net.Http
 open System.Text.Json
 open System.Threading.Tasks
+open SeqMcp.SeqConfig
 
-/// Typed wrapper over Seq's HTTP API. Base address and the X-Seq-ApiKey header
-/// are configured in DI (see Program.fs). All tool capabilities are built on the
-/// single, well-defined query endpoint: GET /api/data.
+/// Typed wrapper over Seq's HTTP API. The target environment (server URL and API key)
+/// is chosen per call, so the HttpClient carries no base address or default headers.
 type SeqClient(http: HttpClient) =
 
     static let jsonOptions = JsonSerializerOptions(PropertyNameCaseInsensitive = true)
@@ -15,18 +15,24 @@ type SeqClient(http: HttpClient) =
     static let isoUtc (t: DateTime) =
         t.ToUniversalTime().ToString("o")
 
-    let serverUrl () =
-        if isNull http.BaseAddress then
-            "(no server URL — set SEQ__SERVERURL)"
-        else
-            string http.BaseAddress
+    let absoluteUrl (env: SeqEnvironment) (relativeUrl: string) =
+        env.ServerUrl.TrimEnd('/') + "/" + relativeUrl
 
-    /// Issue a GET and return the body, turning transport/HTTP failures into clear,
-    /// actionable messages that name the relevant SEQ__ setting.
-    let send (url: string) : Task<string> =
+    let buildRequest (env: SeqEnvironment) (relativeUrl: string) =
+        let req = new HttpRequestMessage(HttpMethod.Get, absoluteUrl env relativeUrl)
+        env.ApiKey |> Option.iter (fun key -> req.Headers.Add("X-Seq-ApiKey", key))
+        req
+
+    let settingName (env: SeqEnvironment) (setting: string) =
+        $"SEQ__ENVIRONMENTS__{env.Name.ToUpperInvariant()}__{setting}"
+
+    /// Issue a GET against the chosen environment and return the body, turning
+    /// transport/HTTP failures into clear, actionable messages that name the environment.
+    let send (env: SeqEnvironment) (relativeUrl: string) : Task<string> =
         task {
             try
-                use! resp = http.GetAsync url
+                use req = buildRequest env relativeUrl
+                use! resp = http.SendAsync req
                 let! body = resp.Content.ReadAsStringAsync()
 
                 if resp.IsSuccessStatusCode then
@@ -35,24 +41,31 @@ type SeqClient(http: HttpClient) =
                     match int resp.StatusCode with
                     | 401
                     | 403 ->
+                        let apiKeySetting = settingName env "APIKEY"
+
                         let hint =
-                            if http.DefaultRequestHeaders.Contains "X-Seq-ApiKey" then
-                                "The SEQ__APIKEY is set but was rejected — check the key is valid and has read permission."
+                            if env.ApiKey.IsSome then
+                                $"The API key for environment '{env.Name}' was rejected, check the key is valid and has read permission."
                             else
-                                "No API key is configured — set the SEQ__APIKEY environment variable (this Seq server requires authentication)."
+                                $"No API key is configured for environment '{env.Name}', set the {apiKeySetting} environment variable (this Seq server requires authentication)."
 
                         return
                             failwithf
-                                "Seq at %s returned %d (unauthorized). %s"
-                                (serverUrl ())
+                                "Seq environment '%s' at %s returned %d (unauthorized). %s"
+                                env.Name
+                                env.ServerUrl
                                 (int resp.StatusCode)
                                 hint
-                    | code -> return failwithf "Seq at %s returned %d: %s" (serverUrl ()) code (body.Trim())
+                    | code ->
+                        return
+                            failwithf "Seq environment '%s' at %s returned %d: %s" env.Name env.ServerUrl code (body.Trim())
             with :? HttpRequestException as ex ->
                 return
                     failwithf
-                        "Could not reach Seq at %s — check the SEQ__SERVERURL environment variable and that the server is running. (%s)"
-                        (serverUrl ())
+                        "Could not reach Seq environment '%s' at %s, check the %s environment variable and that the server is running. (%s)"
+                        env.Name
+                        env.ServerUrl
+                        (settingName env "SERVERURL")
                         ex.Message
         }
 
@@ -60,6 +73,7 @@ type SeqClient(http: HttpClient) =
     /// optionally scoped to a saved signal.
     member _.QueryAsync
         (
+            env: SeqEnvironment,
             sql: string,
             signal: string option,
             rangeStartUtc: DateTime option,
@@ -79,7 +93,7 @@ type SeqClient(http: HttpClient) =
                   | None -> () ]
 
             let url = "api/data?" + String.Join("&", parts)
-            let! body = send url
+            let! body = send env url
             return JsonSerializer.Deserialize<QueryResult>(body, jsonOptions)
         }
 
@@ -87,6 +101,7 @@ type SeqClient(http: HttpClient) =
     /// optional [from, to) window. Uses GET /api/events (purpose-built for event listing).
     member _.EventsAsync
         (
+            env: SeqEnvironment,
             filter: string,
             count: int,
             signal: string option,
@@ -110,36 +125,36 @@ type SeqClient(http: HttpClient) =
                   | None -> () ]
 
             let url = "api/events?" + String.Join("&", parts)
-            let! body = send url
+            let! body = send env url
             return JsonSerializer.Deserialize<SeqEvent[]>(body, jsonOptions)
         }
 
     /// Fetch a single event by id, with rendered message and full detail.
-    member _.GetEventAsync(id: string) : Task<SeqEvent> =
+    member _.GetEventAsync(env: SeqEnvironment, id: string) : Task<SeqEvent> =
         task {
             let url = "api/events/" + Uri.EscapeDataString id + "?render=true"
-            let! body = send url
+            let! body = send env url
             return JsonSerializer.Deserialize<SeqEvent>(body, jsonOptions)
         }
 
     /// List saved signals (shared and personal).
-    member _.ListSignalsAsync() : Task<Signal[]> =
+    member _.ListSignalsAsync(env: SeqEnvironment) : Task<Signal[]> =
         task {
-            let! body = send "api/signals?shared=true"
+            let! body = send env "api/signals?shared=true"
             return JsonSerializer.Deserialize<Signal[]>(body, jsonOptions)
         }
 
     /// List configured alerts (shared and owned).
-    member _.ListAlertsAsync() : Task<Alert[]> =
+    member _.ListAlertsAsync(env: SeqEnvironment) : Task<Alert[]> =
         task {
-            let! body = send "api/alerts?shared=true"
+            let! body = send env "api/alerts?shared=true"
             return JsonSerializer.Deserialize<Alert[]>(body, jsonOptions)
         }
 
     /// Fetch a single alert by id.
-    member _.GetAlertAsync(id: string) : Task<Alert> =
+    member _.GetAlertAsync(env: SeqEnvironment, id: string) : Task<Alert> =
         task {
             let url = "api/alerts/" + Uri.EscapeDataString id
-            let! body = send url
+            let! body = send env url
             return JsonSerializer.Deserialize<Alert>(body, jsonOptions)
         }

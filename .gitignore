@@ -64,3 +64,6 @@ api-key.env
 mcpb/server/
 dist/
 *.mcpb
+
+# Superpowers SDD scratch workspace (controller scratch, never committed)
+.superpowers/

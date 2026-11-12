@@ -7,6 +7,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "SeqMcp", "src\SeqMcp\SeqMcp.fsproj", "{E6737B81-C1FA-49C5-B77E-CDD2F0C2E126}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "SeqMcp.Tests", "tests\SeqMcp.Tests\SeqMcp.Tests.fsproj", "{13485E49-3DF0-46EE-A33C-2D7A1B4D3EBC}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -29,11 +33,24 @@ Global
 		{E6737B81-C1FA-49C5-B77E-CDD2F0C2E126}.Release|x64.Build.0 = Release|Any CPU
 		{E6737B81-C1FA-49C5-B77E-CDD2F0C2E126}.Release|x86.ActiveCfg = Release|Any CPU
 		{E6737B81-C1FA-49C5-B77E-CDD2F0C2E126}.Release|x86.Build.0 = Release|Any CPU
+		{13485E49-3DF0-46EE-A33C-2D7A1B4D3EBC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{13485E49-3DF0-46EE-A33C-2D7A1B4D3EBC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{13485E49-3DF0-46EE-A33C-2D7A1B4D3EBC}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{13485E49-3DF0-46EE-A33C-2D7A1B4D3EBC}.Debug|x64.Build.0 = Debug|Any CPU
+		{13485E49-3DF0-46EE-A33C-2D7A1B4D3EBC}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{13485E49-3DF0-46EE-A33C-2D7A1B4D3EBC}.Debug|x86.Build.0 = Debug|Any CPU
+		{13485E49-3DF0-46EE-A33C-2D7A1B4D3EBC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{13485E49-3DF0-46EE-A33C-2D7A1B4D3EBC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{13485E49-3DF0-46EE-A33C-2D7A1B4D3EBC}.Release|x64.ActiveCfg = Release|Any CPU
+		{13485E49-3DF0-46EE-A33C-2D7A1B4D3EBC}.Release|x64.Build.0 = Release|Any CPU
+		{13485E49-3DF0-46EE-A33C-2D7A1B4D3EBC}.Release|x86.ActiveCfg = Release|Any CPU
+		{13485E49-3DF0-46EE-A33C-2D7A1B4D3EBC}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{E6737B81-C1FA-49C5-B77E-CDD2F0C2E126} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{13485E49-3DF0-46EE-A33C-2D7A1B4D3EBC} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

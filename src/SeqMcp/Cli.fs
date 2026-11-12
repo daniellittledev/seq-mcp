@@ -1,6 +1,8 @@
 /// CLI front-end: maps verbs onto Commands.* (the same core the MCP tools use).
 /// A single `specs` list is the source of truth for `--help`, `seq-mcp commands`
 /// (machine-readable JSON, the CLI analogue of MCP tools/list), and dispatch.
+/// Every verb accepts a global `--env <name>` to pick a configured Seq environment
+/// (omitted selects the configured default).
 module SeqMcp.Cli
 
 open System
@@ -93,15 +95,18 @@ let private helpText () =
       ""
       specs |> List.map line |> String.concat "\n"
       ""
+      "  --env <name>           target a configured Seq environment (default: the configured default)"
       "  seq-mcp commands       full command surface as JSON (for tools/agents)"
       "  seq-mcp --stdio        run as an MCP server over stdio"
       "  seq-mcp --http         run as an MCP server over HTTP" ]
     |> String.concat "\n"
 
-/// Route one verb to the shared Commands core.
-let private dispatch (client: SeqClient) cmd (pos: string list) (flags: Map<string, string>) =
+/// Route one verb to the shared Commands core. `--env` picks the environment (blank
+/// → the configured default), resolved inside Commands against the registry.
+let private dispatch (client: SeqClient) (envs: SeqConfig.SeqEnvironments) cmd (pos: string list) (flags: Map<string, string>) =
     let arg i = List.tryItem i pos |> Option.defaultValue ""
     let flag k = Map.tryFind k flags |> Option.defaultValue null
+    let env = flag "env"
 
     let flagInt k d =
         match Map.tryFind k flags with
@@ -112,19 +117,20 @@ let private dispatch (client: SeqClient) cmd (pos: string list) (flags: Map<stri
         | None -> d
 
     match cmd with
-    | "query" -> Some(Commands.query client (arg 0) (flag "from") (flag "to") (flag "signal"))
-    | "errors" -> Some(Commands.recentErrors client (flagInt "minutes" 30))
-    | "search" -> Some(Commands.searchEvents client (arg 0) (flagInt "count" 30) (flag "signal"))
-    | "event" -> Some(Commands.getEvent client (arg 0))
-    | "signals" -> Some(Commands.listSignals client (flag "filter"))
-    | "alerts" -> Some(Commands.listAlerts client (flag "filter"))
-    | "alert" -> Some(Commands.getAlert client (arg 0))
-    | "alert-state" -> Some(Commands.alertState client)
+    | "query" -> Some(Commands.query client envs env (arg 0) (flag "from") (flag "to") (flag "signal"))
+    | "errors" -> Some(Commands.recentErrors client envs env (flagInt "minutes" 30))
+    | "search" -> Some(Commands.searchEvents client envs env (arg 0) (flagInt "count" 30) (flag "signal"))
+    | "event" -> Some(Commands.getEvent client envs env (arg 0))
+    | "signals" -> Some(Commands.listSignals client envs env (flag "filter"))
+    | "alerts" -> Some(Commands.listAlerts client envs env (flag "filter"))
+    | "alert" -> Some(Commands.getAlert client envs env (arg 0))
+    | "alert-state" -> Some(Commands.alertState client envs env)
     | _ -> None
 
-/// Entry point for the CLI path. `configureClient` registers the SeqClient the
-/// same way the server hosts do (passed in from Program.fs to keep one wiring).
-let run (configureClient: IServiceCollection -> IConfiguration -> unit) (argv: string[]) : int =
+/// Entry point for the CLI path. `configureClient` registers the SeqClient and the
+/// environment registry the same way the server hosts do (passed in from Program.fs
+/// to keep one wiring); it returns an Error when the Seq configuration is invalid.
+let run (configureClient: IServiceCollection -> IConfiguration -> Result<unit, string>) (argv: string[]) : int =
     match Array.toList argv with
     | []
     | "--help" :: _
@@ -137,19 +143,25 @@ let run (configureClient: IServiceCollection -> IConfiguration -> unit) (argv: s
     | cmd :: rest ->
         let builder = Host.CreateApplicationBuilder()
         builder.Logging.ClearProviders() |> ignore // keep stdout clean for piping
-        configureClient builder.Services builder.Configuration
-        use host = builder.Build()
-        let client = host.Services.GetRequiredService<SeqClient>()
-        let pos, flags = parseArgs rest
 
-        match dispatch client cmd pos flags with
-        | None ->
-            eprintfn "Unknown command '%s'. Run `seq-mcp --help`." cmd
+        match configureClient builder.Services builder.Configuration with
+        | Error msg ->
+            eprintfn "%s" msg
             1
-        | Some work ->
-            try
-                printfn "%s" (work.GetAwaiter().GetResult())
-                0
-            with ex ->
-                eprintfn "Error: %s" ex.Message
+        | Ok() ->
+            use host = builder.Build()
+            let client = host.Services.GetRequiredService<SeqClient>()
+            let envs = host.Services.GetRequiredService<SeqConfig.SeqEnvironments>()
+            let pos, flags = parseArgs rest
+
+            match dispatch client envs cmd pos flags with
+            | None ->
+                eprintfn "Unknown command '%s'. Run `seq-mcp --help`." cmd
                 1
+            | Some work ->
+                try
+                    printfn "%s" (work.GetAwaiter().GetResult())
+                    0
+                with ex ->
+                    eprintfn "Error: %s" ex.Message
+                    1
