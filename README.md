@@ -10,10 +10,10 @@ raw JSON to keep token usage low.
 | Tool | Description |
 |------|-------------|
 | `seq_query(sql, from?, to?, signal?, environment?)` | Run a Seq SQL query. Supports aggregates/grouping, e.g. `select count(*) as Count from stream group by @Level`. `from`/`to` are optional ISO-8601 UTC bounds (default: last 24h). Optionally scope to a saved `signal` id. Results capped at 100 rows. |
-| `recent_errors(minutes?)` | Most recent Error/Fatal events (up to 20) as `Id · Time · Level · Message` lines, newest first (default: last 30 min). |
-| `search_events(filter, count?, signal?)` | Events matching a Seq filter expression (e.g. `@Exception like '%timeout%'`), newest first (default: 30, last 24h). Optionally scope to a saved `signal` id. |
-| `get_event(id)` | Full detail for one event (the `Id` from the list tools): rendered message, exception/stack trace, and all properties. |
-| `list_signals(nameFilter?)` | Saved signals as `Id · Title` lines; the `Id` can scope `seq_query`/`search_events`. Pass a name substring to narrow the list. |
+| `recent_errors(minutes?, environment?)` | Most recent Error/Fatal events (up to 20) as `Id · Time · Level · Message` lines, newest first (default: last 30 min). |
+| `search_events(filter, count?, signal?, environment?)` | Events matching a Seq filter expression (e.g. `@Exception like '%timeout%'`), newest first (default: 30, last 24h). Optionally scope to a saved `signal` id. |
+| `get_event(id, environment?)` | Full detail for one event (the `Id` from the list tools): rendered message, exception/stack trace, and all properties. |
+| `list_signals(nameFilter?, environment?)` | Saved signals as `Id · Title` lines; the `Id` can scope `seq_query`/`search_events`. Pass a name substring to narrow the list. |
 
 ## Install
 
@@ -40,8 +40,9 @@ an error on stderr at startup if none is configured.
 | Default environment | `SEQ__DEFAULTENVIRONMENT` |
 
 Every tool takes an optional `environment` parameter naming which environment to query. When
-omitted, the default is used: `SEQ__DEFAULTENVIRONMENT` if set, otherwise the only configured
-environment. With several environments and no default, the `environment` parameter is required.
+omitted, the default environment is used: `SEQ__DEFAULTENVIRONMENT` if set, otherwise the only
+configured environment, otherwise the one named `prod`. If none of these picks one, the server
+exits at startup asking you to set `SEQ__DEFAULTENVIRONMENT`.
 
 The legacy flat `SEQ__SERVERURL` / `SEQ__APIKEY` variables still work and define a single
 environment named `prod`.
