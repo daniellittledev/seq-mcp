@@ -1,0 +1,37 @@
+name: Release MCPB
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  mcpb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Derive version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Build .mcpb
+        shell: pwsh
+        run: ./build-mcpb.ps1 -Version $env:VERSION
+
+      - name: Publish to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME"
+          dist/seq-mcp.mcpb
+          --title "$GITHUB_REF_NAME"
+          --generate-notes
+          || gh release upload "$GITHUB_REF_NAME" dist/seq-mcp.mcpb --clobber

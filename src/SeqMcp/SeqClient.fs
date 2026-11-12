@@ -143,3 +143,18 @@ type SeqClient(http: HttpClient) =
             let! body = send env "api/signals?shared=true"
             return JsonSerializer.Deserialize<Signal[]>(body, jsonOptions)
         }
+
+    /// List configured alerts (shared and owned).
+    member _.ListAlertsAsync(env: SeqEnvironment) : Task<Alert[]> =
+        task {
+            let! body = send env "api/alerts?shared=true"
+            return JsonSerializer.Deserialize<Alert[]>(body, jsonOptions)
+        }
+
+    /// Fetch a single alert by id.
+    member _.GetAlertAsync(env: SeqEnvironment, id: string) : Task<Alert> =
+        task {
+            let url = "api/alerts/" + Uri.EscapeDataString id
+            let! body = send env url
+            return JsonSerializer.Deserialize<Alert>(body, jsonOptions)
+        }

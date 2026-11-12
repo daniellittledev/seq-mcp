@@ -70,6 +70,10 @@ let private runHttp (args: string[]) =
 
 [<EntryPoint>]
 let main args =
-    // `--stdio` selects the stdio transport (for `claude mcp add ... -- seq-mcp --stdio`);
-    // otherwise the server runs over HTTP.
-    if Array.contains "--stdio" args then runStdio args else runHttp args
+    // Transport selection:
+    //   --stdio  → MCP over stdio (for `claude mcp add ... -- seq-mcp --stdio`)
+    //   --http   → MCP over HTTP (for Claude Desktop and other URL clients)
+    //   neither  → run as a CLI (see Cli.specs / `seq-mcp --help`)
+    if Array.contains "--stdio" args then runStdio args
+    elif Array.contains "--http" args then runHttp args
+    else Cli.run tryConfigureSeq args

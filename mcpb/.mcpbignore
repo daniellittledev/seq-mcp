@@ -1,0 +1,4 @@
+# Web-hosting / debug artifacts the stdio MCP server doesn't need.
+server/*.pdb
+server/web.config
+server/*.staticwebassets.endpoints.json

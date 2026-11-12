@@ -1,0 +1,57 @@
+{
+  "manifest_version": "0.2",
+  "name": "seq-mcp",
+  "display_name": "Seq Logs",
+  "version": "0.1.4",
+  "description": "Query a Seq structured-log server: Seq SQL (group by / aggregates), recent errors, event search, and saved signals.",
+  "long_description": "A token-efficient MCP server for [Seq](https://datalust.co). Exposes Seq SQL querying with aggregates and grouping, recent Error/Fatal events, free-form event search, full single-event detail, and saved-signal listing. Returns terse plain text rather than raw JSON to keep token usage low. Ships as a self-contained Windows executable, so no .NET runtime needs to be installed.",
+  "author": {
+    "name": "Daniel Little",
+    "url": "https://github.com/daniellittledev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/daniellittledev/seq-mcp"
+  },
+  "license": "MIT",
+  "keywords": ["mcp", "seq", "logging", "datalust", "observability"],
+  "server": {
+    "type": "binary",
+    "entry_point": "server/SeqMcp.exe",
+    "mcp_config": {
+      "command": "${__dirname}/server/SeqMcp.exe",
+      "args": ["--stdio"],
+      "env": {
+        "SEQ__SERVERURL": "${user_config.seq_server_url}",
+        "SEQ__APIKEY": "${user_config.seq_api_key}"
+      }
+    }
+  },
+  "tools": [
+    { "name": "seq_query", "description": "Run a Seq SQL query (supports aggregates / group by), optionally scoped to a signal and time range." },
+    { "name": "recent_errors", "description": "Most recent Error/Fatal events, newest first." },
+    { "name": "search_events", "description": "Events matching a Seq filter expression, newest first." },
+    { "name": "get_event", "description": "Full detail for a single event by id." },
+    { "name": "list_signals", "description": "Saved signals as Id and Title lines for scoping queries." }
+  ],
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": ["win32"]
+  },
+  "user_config": {
+    "seq_server_url": {
+      "type": "string",
+      "title": "Seq server URL",
+      "description": "Base URL of your Seq server, e.g. https://seq.example.com or http://localhost:5341.",
+      "required": true,
+      "default": "http://localhost:5341"
+    },
+    "seq_api_key": {
+      "type": "string",
+      "title": "Seq API key",
+      "description": "Seq API key, sent as the X-Seq-ApiKey header. Leave blank if your Seq instance allows anonymous read.",
+      "sensitive": true,
+      "required": false
+    }
+  }
+}

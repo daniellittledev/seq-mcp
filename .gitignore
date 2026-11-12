@@ -60,5 +60,10 @@ nunit-*.xml
 api-key.env
 *.env
 
+# MCPB extension build output
+mcpb/server/
+dist/
+*.mcpb
+
 # Superpowers SDD scratch workspace (controller scratch, never committed)
 .superpowers/
