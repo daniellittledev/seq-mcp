@@ -23,6 +23,7 @@
   <!-- F# compile order matters: Models -> Client -> Tools -> Program. -->
   <ItemGroup>
     <Compile Include="Models.fs" />
+    <Compile Include="Config.fs" />
     <Compile Include="SeqClient.fs" />
     <Compile Include="Tools.fs" />
     <Compile Include="Program.fs" />
