@@ -102,3 +102,13 @@ let ``parse errors naming the environment when a named environment has no Server
         |> errOrFail
 
     Assert.Contains("staging", message)
+
+[<Fact>]
+let ``parse errors naming the environment when a ServerUrl is not a valid absolute URL`` () =
+    let message =
+        build [ "Seq:Environments:prod:ServerUrl", "seq.example.com" ]
+        |> parse
+        |> errOrFail
+
+    Assert.Contains("prod", message)
+    Assert.Contains("seq.example.com", message)

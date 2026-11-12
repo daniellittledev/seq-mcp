@@ -23,25 +23,31 @@ let private normalise (name: string) = name.Trim().ToLowerInvariant()
 let private names (byName: Map<string, SeqEnvironment>) =
     byName |> Map.keys |> String.concat ", "
 
-let private toEnvironment (name: string) (section: IConfiguration) =
-    nonBlank section["ServerUrl"]
-    |> Option.map (fun url ->
+/// Build an environment from a name, server URL and optional key, validating the URL so a
+/// misconfigured ServerUrl fails fast at startup with an environment-named message, rather
+/// than surfacing later as a generic URI error on the first request.
+let private makeEnvironment (name: string) (url: string) (apiKey: string option) : Result<string * SeqEnvironment, string> =
+    match System.Uri.TryCreate(url, System.UriKind.Absolute) with
+    | true, uri when uri.Scheme = System.Uri.UriSchemeHttp || uri.Scheme = System.Uri.UriSchemeHttps ->
         let key = normalise name
-        key, { Name = key; ServerUrl = url; ApiKey = nonBlank section["ApiKey"] })
-    |> orError $"Environment '{name}' has no ServerUrl configured."
+        Ok(key, { Name = key; ServerUrl = url; ApiKey = apiKey })
+    | _ ->
+        Error $"Environment '{name}' has an invalid ServerUrl '{url}'. Use an absolute http(s) URL, e.g. https://seq.example.com."
+
+let private toEnvironment (name: string) (section: IConfiguration) =
+    match nonBlank section["ServerUrl"] with
+    | Some url -> makeEnvironment name url (nonBlank section["ApiKey"])
+    | None -> Error $"Environment '{name}' has no ServerUrl configured."
 
 let private readNamed (config: IConfiguration) =
     config.GetSection("Seq:Environments").GetChildren()
     |> Seq.map (fun child -> toEnvironment child.Key child)
     |> Seq.toList
 
-let private readLegacy (config: IConfiguration) =
+let private readLegacy (config: IConfiguration) : Result<(string * SeqEnvironment) list, string> option =
     nonBlank config["Seq:ServerUrl"]
     |> Option.map (fun url ->
-        [ defaultName,
-          { Name = defaultName
-            ServerUrl = url
-            ApiKey = nonBlank config["Seq:ApiKey"] } ])
+        makeEnvironment defaultName url (nonBlank config["Seq:ApiKey"]) |> Result.map List.singleton)
 
 let private noneConfigured =
     "No Seq environments configured. Set SEQ__ENVIRONMENTS__<NAME>__SERVERURL (and optionally SEQ__ENVIRONMENTS__<NAME>__APIKEY), e.g. SEQ__ENVIRONMENTS__PROD__SERVERURL."
@@ -57,7 +63,6 @@ let private readEnvironments (config: IConfiguration) =
     match readNamed config with
     | [] ->
         readLegacy config
-        |> Option.map Ok
         |> Option.defaultValue (Error noneConfigured)
     | named -> collect named
 
