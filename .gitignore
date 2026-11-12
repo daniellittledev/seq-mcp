@@ -59,3 +59,6 @@ nunit-*.xml
 # Local secrets - never commit
 api-key.env
 *.env
+
+# Superpowers SDD scratch workspace (controller scratch, never committed)
+.superpowers/

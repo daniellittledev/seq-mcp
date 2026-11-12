@@ -47,6 +47,8 @@ exits at startup asking you to set `SEQ__DEFAULTENVIRONMENT`.
 The legacy flat `SEQ__SERVERURL` / `SEQ__APIKEY` variables still work and define a single
 environment named `prod`.
 
+**Upgrading to 0.2.0:** at least one environment must now be configured and the server fails fast otherwise, whereas 0.1.x silently defaulted to `http://localhost:5341`.
+
 The API key is sent as the `X-Seq-ApiKey` header, and only to the environment it belongs to. It
 is optional if your Seq instance allows anonymous read; when the key is missing or Seq is
 unreachable, tool calls return a graceful error message rather than failing the server.
@@ -57,13 +59,22 @@ stdio (recommended), Claude launches and manages the process. This example carri
 environments, with `prod` as the default:
 
 ```sh
-claude mcp add seq   -e SEQ__ENVIRONMENTS__PROD__SERVERURL=https://seq.example.com   -e SEQ__ENVIRONMENTS__PROD__APIKEY=prod-api-key   -e SEQ__ENVIRONMENTS__LOCAL__SERVERURL=http://localhost:5341   -e SEQ__DEFAULTENVIRONMENT=prod   -- seq-mcp --stdio
+claude mcp add seq \
+  -e SEQ__ENVIRONMENTS__PROD__SERVERURL=https://seq.example.com \
+  -e SEQ__ENVIRONMENTS__PROD__APIKEY=prod-api-key \
+  -e SEQ__ENVIRONMENTS__LOCAL__SERVERURL=http://localhost:5341 \
+  -e SEQ__DEFAULTENVIRONMENT=prod \
+  -- seq-mcp --stdio
 ```
 
 HTTP, run the server yourself, then point Claude at the URL:
 
 ```sh
-SEQ__ENVIRONMENTS__PROD__SERVERURL=https://seq.example.com SEQ__ENVIRONMENTS__PROD__APIKEY=your-api-key seq-mcp   # in one terminal
+# in one terminal
+SEQ__ENVIRONMENTS__PROD__SERVERURL=https://seq.example.com \
+SEQ__ENVIRONMENTS__PROD__APIKEY=your-api-key \
+seq-mcp
+# in another
 claude mcp add --transport http seq http://localhost:5250
 ```
 

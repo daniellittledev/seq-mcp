@@ -23,6 +23,9 @@ type SeqClient(http: HttpClient) =
         env.ApiKey |> Option.iter (fun key -> req.Headers.Add("X-Seq-ApiKey", key))
         req
 
+    let settingName (env: SeqEnvironment) (setting: string) =
+        $"SEQ__ENVIRONMENTS__{env.Name.ToUpperInvariant()}__{setting}"
+
     /// Issue a GET against the chosen environment and return the body, turning
     /// transport/HTTP failures into clear, actionable messages that name the environment.
     let send (env: SeqEnvironment) (relativeUrl: string) : Task<string> =
@@ -38,11 +41,13 @@ type SeqClient(http: HttpClient) =
                     match int resp.StatusCode with
                     | 401
                     | 403 ->
+                        let apiKeySetting = settingName env "APIKEY"
+
                         let hint =
                             if env.ApiKey.IsSome then
-                                "The SEQ__APIKEY is set but was rejected, check the key is valid and has read permission."
+                                $"The API key for environment '{env.Name}' was rejected, check the key is valid and has read permission."
                             else
-                                "No API key is configured, set the SEQ__APIKEY environment variable (this Seq server requires authentication)."
+                                $"No API key is configured for environment '{env.Name}', set the {apiKeySetting} environment variable (this Seq server requires authentication)."
 
                         return
                             failwithf
@@ -57,9 +62,10 @@ type SeqClient(http: HttpClient) =
             with :? HttpRequestException as ex ->
                 return
                     failwithf
-                        "Could not reach Seq environment '%s' at %s, check the SEQ__SERVERURL environment variable and that the server is running. (%s)"
+                        "Could not reach Seq environment '%s' at %s, check the %s environment variable and that the server is running. (%s)"
                         env.Name
                         env.ServerUrl
+                        (settingName env "SERVERURL")
                         ex.Message
         }
 

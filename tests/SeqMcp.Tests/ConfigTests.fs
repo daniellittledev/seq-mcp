@@ -24,9 +24,9 @@ let private twoEnvs =
 
 [<Fact>]
 let ``parse reads named environments with explicit default`` () =
-    let envs = build (("Seq:DefaultEnvironment", "prod") :: twoEnvs) |> parse |> okOrFail
+    let envs = build (("Seq:DefaultEnvironment", "local") :: twoEnvs) |> parse |> okOrFail
     Assert.Equal<string list>([ "local"; "prod" ], envs.ByName |> Map.keys |> List.ofSeq)
-    Assert.Equal("prod", envs.Default)
+    Assert.Equal("local", envs.Default)
     Assert.Equal("https://seq.example.com", envs.ByName["prod"].ServerUrl)
     Assert.Equal(Some "secret", envs.ByName["prod"].ApiKey)
     Assert.Equal(None, envs.ByName["local"].ApiKey)
@@ -93,3 +93,12 @@ let ``resolve unknown is an error`` () =
     let msg = resolve (envs ()) (Some "stage") |> errOrFail
     Assert.Contains("Unknown environment 'stage'", msg)
     Assert.Contains("prod", msg)
+
+[<Fact>]
+let ``parse errors naming the environment when a named environment has no ServerUrl`` () =
+    let message =
+        build [ "Seq:Environments:staging:ServerUrl", "  "; "Seq:Environments:staging:ApiKey", "k" ]
+        |> parse
+        |> errOrFail
+
+    Assert.Contains("staging", message)

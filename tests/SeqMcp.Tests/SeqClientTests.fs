@@ -19,6 +19,12 @@ type private StubHandler(body: string) =
         response.Content <- new StringContent(body, System.Text.Encoding.UTF8, "application/json")
         Task.FromResult response
 
+type private FailingHandler(respond: unit -> HttpResponseMessage) =
+    inherit HttpMessageHandler()
+
+    override _.SendAsync(_: HttpRequestMessage, _: CancellationToken) : Task<HttpResponseMessage> =
+        Task.FromResult(respond ())
+
 let private env url key =
     { Name = "test"
       ServerUrl = url
@@ -56,3 +62,22 @@ let ``get event targets the event path with render`` () =
     let client = SeqClient(new HttpClient(stub))
     client.GetEventAsync(env "https://seq.x.com" None, "event-1").GetAwaiter().GetResult() |> ignore
     Assert.EndsWith("/api/events/event-1?render=true", string stub.LastRequest.RequestUri)
+
+let private errorMessageFrom handler =
+    let client = SeqClient(new HttpClient(handler))
+    let ex = Assert.ThrowsAny<exn>(fun () -> client.ListSignalsAsync(env "https://seq.x.com" None).GetAwaiter().GetResult() |> ignore)
+    ex.Message
+
+[<Fact>]
+let ``unauthorized error names the environment and its server url`` () =
+    let message = errorMessageFrom (new FailingHandler(fun () -> new HttpResponseMessage(HttpStatusCode.Unauthorized)))
+    Assert.Contains("test", message)
+    Assert.Contains("https://seq.x.com", message)
+    Assert.Contains("SEQ__ENVIRONMENTS__TEST__APIKEY", message)
+
+[<Fact>]
+let ``connection failure names the environment and its server url`` () =
+    let message = errorMessageFrom (new FailingHandler(fun () -> raise (HttpRequestException "boom")))
+    Assert.Contains("test", message)
+    Assert.Contains("https://seq.x.com", message)
+    Assert.Contains("SEQ__ENVIRONMENTS__TEST__SERVERURL", message)
