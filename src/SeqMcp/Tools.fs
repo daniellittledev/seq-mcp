@@ -118,15 +118,7 @@ module private Render =
             sb.ToString().TrimEnd()
 
 [<McpServerToolType>]
-type SeqTools(client: SeqClient) =
-
-    // TEMPORARY bridge until Task 4 resolves the environment per tool call.
-    let env: SeqConfig.SeqEnvironment =
-        let nonBlank v = if String.IsNullOrWhiteSpace v then None else Some v
-
-        { Name = "default"
-          ServerUrl = nonBlank (Environment.GetEnvironmentVariable "SEQ__SERVERURL") |> Option.defaultValue "http://localhost:5341"
-          ApiKey = nonBlank (Environment.GetEnvironmentVariable "SEQ__APIKEY") }
+type SeqTools(client: SeqClient, envs: SeqConfig.SeqEnvironments) =
 
     let parseDate (s: string) =
         if String.IsNullOrWhiteSpace s then
@@ -153,15 +145,23 @@ type SeqTools(client: SeqClient) =
     let optional (s: string) =
         if String.IsNullOrWhiteSpace s then None else Some s
 
+    /// Resolve the requested environment, then run the call against it; an unknown
+    /// environment is reported as the tool's text rather than thrown.
+    let inEnvironment (environment: string) (call: SeqConfig.SeqEnvironment -> Task<string>) : Task<string> =
+        match SeqConfig.resolve envs (optional environment) with
+        | Ok env -> run (fun () -> call env)
+        | Error msg -> Task.FromResult msg
+
     [<McpServerTool; Description("Run a Seq SQL query and return compact tabular results. Supports aggregates and grouping, e.g. \"select count(*) as Count from stream group by @Level\". Time window defaults to the last 24 hours; pass ISO-8601 UTC 'from'/'to' to override. Optionally scope to a saved signal id (from list_signals). Results are capped at 100 rows.")>]
     member _.SeqQuery
         (
             [<Description("Seq SQL query, e.g. 'select count(*) as Count from stream group by @Level'")>] sql: string,
             [<Description("Optional ISO-8601 UTC start of the time window. Defaults to 24h ago."); Optional; DefaultParameterValue(null: string)>] from: string,
             [<Description("Optional ISO-8601 UTC end of the time window. Defaults to now."); Optional; DefaultParameterValue(null: string)>] ``to``: string,
-            [<Description("Optional saved signal id (e.g. 'signal-123') to scope the query to. From list_signals."); Optional; DefaultParameterValue(null: string)>] signal: string
+            [<Description("Optional saved signal id (e.g. 'signal-123') to scope the query to. From list_signals."); Optional; DefaultParameterValue(null: string)>] signal: string,
+            [<Description("Which configured Seq environment to query (e.g. 'prod', 'local'). Defaults to the configured default."); Optional; DefaultParameterValue(null: string)>] environment: string
         ) : Task<string> =
-        run (fun () ->
+        inEnvironment environment (fun env ->
             task {
                 let rangeStart =
                     parseDate from |> Option.defaultValue (DateTime.UtcNow.AddHours(-24.0))
@@ -174,9 +174,10 @@ type SeqTools(client: SeqClient) =
     [<McpServerTool; Description("List the most recent Error and Fatal events (up to 20). Returns compact Id · Time · Level · Message lines, newest first; pass an Id to get_event for full detail. Defaults to the last 30 minutes.")>]
     member _.RecentErrors
         (
-            [<Description("Look-back window in minutes. Defaults to 30."); Optional; DefaultParameterValue(30)>] minutes: int
+            [<Description("Look-back window in minutes. Defaults to 30."); Optional; DefaultParameterValue(30)>] minutes: int,
+            [<Description("Which configured Seq environment to query (e.g. 'prod', 'local'). Defaults to the configured default."); Optional; DefaultParameterValue(null: string)>] environment: string
         ) : Task<string> =
-        run (fun () ->
+        inEnvironment environment (fun env ->
             task {
                 let minutes = if minutes <= 0 then 30 else minutes
                 let rangeStart = DateTime.UtcNow.AddMinutes(float -minutes)
@@ -199,9 +200,10 @@ type SeqTools(client: SeqClient) =
         (
             [<Description("Seq filter expression, e.g. \"@Level = 'Warning' and Elapsed > 1000\"")>] filter: string,
             [<Description("Maximum number of events to return. Defaults to 30."); Optional; DefaultParameterValue(30)>] count: int,
-            [<Description("Optional saved signal id (e.g. 'signal-123') to scope the search to. From list_signals."); Optional; DefaultParameterValue(null: string)>] signal: string
+            [<Description("Optional saved signal id (e.g. 'signal-123') to scope the search to. From list_signals."); Optional; DefaultParameterValue(null: string)>] signal: string,
+            [<Description("Which configured Seq environment to query (e.g. 'prod', 'local'). Defaults to the configured default."); Optional; DefaultParameterValue(null: string)>] environment: string
         ) : Task<string> =
-        run (fun () ->
+        inEnvironment environment (fun env ->
             task {
                 let count = if count <= 0 || count > 100 then 30 else count
                 let rangeStart = DateTime.UtcNow.AddHours(-24.0)
@@ -210,8 +212,12 @@ type SeqTools(client: SeqClient) =
             })
 
     [<McpServerTool; Description("Get full detail for a single event by its id (the Id field from recent_errors / search_events): rendered message, exception/stack trace, and all properties.")>]
-    member _.GetEvent([<Description("The event id, e.g. 'event-abc123...'")>] id: string) : Task<string> =
-        run (fun () ->
+    member _.GetEvent
+        (
+            [<Description("The event id, e.g. 'event-abc123...'")>] id: string,
+            [<Description("Which configured Seq environment to query (e.g. 'prod', 'local'). Defaults to the configured default."); Optional; DefaultParameterValue(null: string)>] environment: string
+        ) : Task<string> =
+        inEnvironment environment (fun env ->
             task {
                 let! e = client.GetEventAsync(env, id)
                 return Render.eventDetail e
@@ -220,9 +226,10 @@ type SeqTools(client: SeqClient) =
     [<McpServerTool; Description("List saved Seq signals (named, reusable filters) as Id · Title lines. Pass a name filter to narrow a large list; the returned Id can scope seq_query or search_events via their 'signal' parameter.")>]
     member _.ListSignals
         (
-            [<Description("Optional case-insensitive substring to filter signal titles."); Optional; DefaultParameterValue(null: string)>] nameFilter: string
+            [<Description("Optional case-insensitive substring to filter signal titles."); Optional; DefaultParameterValue(null: string)>] nameFilter: string,
+            [<Description("Which configured Seq environment to query (e.g. 'prod', 'local'). Defaults to the configured default."); Optional; DefaultParameterValue(null: string)>] environment: string
         ) : Task<string> =
-        run (fun () ->
+        inEnvironment environment (fun env ->
             task {
                 let! signals = client.ListSignalsAsync(env)
                 return Render.signals nameFilter signals
