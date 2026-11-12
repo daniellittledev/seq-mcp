@@ -120,6 +120,14 @@ module private Render =
 [<McpServerToolType>]
 type SeqTools(client: SeqClient) =
 
+    // TEMPORARY bridge until Task 4 resolves the environment per tool call.
+    let env: SeqConfig.SeqEnvironment =
+        let nonBlank v = if String.IsNullOrWhiteSpace v then None else Some v
+
+        { Name = "default"
+          ServerUrl = nonBlank (Environment.GetEnvironmentVariable "SEQ__SERVERURL") |> Option.defaultValue "http://localhost:5341"
+          ApiKey = nonBlank (Environment.GetEnvironmentVariable "SEQ__APIKEY") }
+
     let parseDate (s: string) =
         if String.IsNullOrWhiteSpace s then
             None
@@ -159,7 +167,7 @@ type SeqTools(client: SeqClient) =
                     parseDate from |> Option.defaultValue (DateTime.UtcNow.AddHours(-24.0))
 
                 let rangeEnd = parseDate ``to`` |> Option.defaultValue DateTime.UtcNow
-                let! r = client.QueryAsync(sql, optional signal, Some rangeStart, Some rangeEnd)
+                let! r = client.QueryAsync(env, sql, optional signal, Some rangeStart, Some rangeEnd)
                 return Render.result r
             })
 
@@ -175,6 +183,7 @@ type SeqTools(client: SeqClient) =
 
                 let! events =
                     client.EventsAsync(
+                        env,
                         "@Level = 'Error' or @Level = 'Fatal'",
                         20,
                         None,
@@ -196,7 +205,7 @@ type SeqTools(client: SeqClient) =
             task {
                 let count = if count <= 0 || count > 100 then 30 else count
                 let rangeStart = DateTime.UtcNow.AddHours(-24.0)
-                let! events = client.EventsAsync(filter, count, optional signal, Some rangeStart, Some DateTime.UtcNow)
+                let! events = client.EventsAsync(env, filter, count, optional signal, Some rangeStart, Some DateTime.UtcNow)
                 return Render.events events
             })
 
@@ -204,7 +213,7 @@ type SeqTools(client: SeqClient) =
     member _.GetEvent([<Description("The event id, e.g. 'event-abc123...'")>] id: string) : Task<string> =
         run (fun () ->
             task {
-                let! e = client.GetEventAsync id
+                let! e = client.GetEventAsync(env, id)
                 return Render.eventDetail e
             })
 
@@ -215,6 +224,6 @@ type SeqTools(client: SeqClient) =
         ) : Task<string> =
         run (fun () ->
             task {
-                let! signals = client.ListSignalsAsync()
+                let! signals = client.ListSignalsAsync(env)
                 return Render.signals nameFilter signals
             })
