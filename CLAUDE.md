@@ -14,7 +14,7 @@ seq-mcp event <id>
 seq-mcp signals --filter <substring>
 ```
 
-`seq-mcp --help` lists commands; `seq-mcp commands` prints the full surface as JSON. Output to stdout, errors to stderr with non-zero exit. Configure via `SEQ__SERVERURL` / `SEQ__APIKEY`.
+`seq-mcp --help` lists commands; `seq-mcp commands` prints the full surface as JSON. Output to stdout, errors to stderr with non-zero exit. Configure via `SEQ__ENVIRONMENTS__<NAME>__SERVERURL` / `__APIKEY` (+ `SEQ__DEFAULTENVIRONMENT`), or legacy `SEQ__SERVERURL` / `SEQ__APIKEY`; `--env <name>` picks one. `skills/seq/SKILL.md` is the user-installable skill for CLI use outside this repo — keep it in sync with `Cli.specs`.
 
 ## Layout
 

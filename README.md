@@ -107,6 +107,34 @@ seq-mcp --http
 claude mcp add --transport http seq http://localhost:5250
 ```
 
+### Use with Claude Code via the CLI (no MCP server)
+
+An MCP server stays running for the whole Claude Code session. The CLI starts a process for each
+command and exits when it's done, so nothing sits in memory between queries. To switch from the MCP:
+
+1. Remove the MCP registration if you added one: `claude mcp remove seq`.
+2. Put the Seq settings in `~/.claude/settings.json` so every Bash command Claude runs inherits them:
+
+   ```json
+   {
+     "env": {
+       "SEQ__ENVIRONMENTS__PROD__SERVERURL": "https://seq.example.com",
+       "SEQ__ENVIRONMENTS__PROD__APIKEY": "prod-api-key",
+       "SEQ__ENVIRONMENTS__LOCAL__SERVERURL": "http://localhost:5341",
+       "SEQ__DEFAULTENVIRONMENT": "prod"
+     }
+   }
+   ```
+
+3. Install the bundled skill so Claude knows the CLI exists in any repo. It loads only when a
+   log question comes up:
+
+   ```sh
+   mkdir -p ~/.claude/skills && cp -r skills/seq ~/.claude/skills/
+   ```
+
+Optionally, allow the CLI without permission prompts by adding `"permissions": { "allow": ["Bash(seq-mcp:*)"] }` to the same settings file.
+
 ### Example MCP client config (HTTP)
 
 ```json
