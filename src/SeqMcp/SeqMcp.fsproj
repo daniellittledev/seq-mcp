@@ -11,6 +11,12 @@
     <Version>0.2.0</Version>
     <RollForward>Major</RollForward>
 
+    <!-- Footprint: the Web SDK defaults to Server GC (one heap per core), which is wasteful
+         for a one-shot CLI and a single-client MCP server; workstation GC keeps both small.
+         All rendering uses invariant culture, so ICU isn't needed. -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <InvariantGlobalization>true</InvariantGlobalization>
+
     <Authors>Daniel Little</Authors>
     <Description>MCP server for querying a Seq structured-log server with Seq SQL (group by / aggregates), recent errors, and event search.</Description>
     <PackageTags>mcp;seq;logging;datalust</PackageTags>
@@ -20,7 +26,7 @@
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
-  <!-- F# compile order matters: Models -> Client -> Render -> Commands -> Tools -> Cli -> Program. -->
+  <!-- F# compile order matters: Models -> Config -> Client -> Render -> Commands -> Tools -> Cli -> Program. -->
   <ItemGroup>
     <Compile Include="Models.fs" />
     <Compile Include="Config.fs" />
