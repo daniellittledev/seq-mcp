@@ -36,6 +36,9 @@ This installs the `seq-mcp` command, which runs in one of three modes:
   (override with `ASPNETCORE_URLS`) that clients connect to by URL. Use for Claude Desktop and
   other clients that connect by URL.
 
+On Windows machines where Defender attack surface reduction rules block global tool launchers,
+don't install globally: see [Windows with Defender attack surface reduction rules](#windows-with-defender-attack-surface-reduction-rules).
+
 ## CLI
 
 The same capabilities are available as shell commands over the same core code, so behaviour and
@@ -96,6 +99,24 @@ claude mcp add seq \
   -- seq-mcp --stdio
 ```
 
+#### Windows with Defender attack surface reduction rules
+
+Corporate Defender ASR rules often block the unsigned launcher that `dotnet tool install -g` puts in
+`%USERPROFILE%\.dotnet\tools`, so the `seq-mcp` command (and pointing the config at that `.exe`)
+won't start. Skip the global install and run the tool through the signed `dotnet` host with a
+pinned version instead (needs the .NET 10 SDK):
+
+```powershell
+claude mcp add seq -s user -e SEQ__ENVIRONMENTS__PROD__SERVERURL=https://seq.example.com -e SEQ__ENVIRONMENTS__PROD__APIKEY=prod-api-key -- dotnet tool execute SeqMcp@0.2.0 --yes -- --stdio
+```
+
+- Use `dotnet` as the command, not `dnx`. `dnx` is a `.cmd` file, which Claude Code can't start
+  directly on Windows.
+- Keep the second `--`: it separates `dotnet tool execute`'s own options from the tool's
+  arguments, such as `--stdio`.
+- To upgrade, change the version in the config (`claude mcp remove seq -s user`, then add it again
+  with the new version) instead of running `dotnet tool update`.
+
 HTTP, run the server yourself, then point Claude at the URL:
 
 ```sh
@@ -141,6 +162,15 @@ command and exits when it's done, so nothing sits in memory between queries. To 
    From a clone of this repo, `cp -r skills/seq ~/.claude/skills/` does the same.
 
 Optionally, allow the CLI without permission prompts by adding `"permissions": { "allow": ["Bash(seq-mcp:*)"] }` to the same settings file.
+
+If the `seq-mcp` launcher is blocked (see [Windows with Defender attack surface reduction rules](#windows-with-defender-attack-surface-reduction-rules)),
+run each CLI command through the `dotnet` host instead. The skill knows to fall back to this:
+
+```sh
+dotnet tool execute SeqMcp@0.2.0 --yes -- errors --minutes 30
+```
+
+The matching permission rule is `Bash(dotnet tool execute SeqMcp@0.2.0:*)`.
 
 ### Example MCP client config (HTTP)
 

@@ -18,6 +18,8 @@ seq-mcp alert <id>
 seq-mcp alert-state                                                    # alerts currently firing
 ```
 
+If `seq-mcp` isn't on the PATH or is blocked from starting (common on Windows machines with Defender attack surface reduction rules), run the same command through the signed `dotnet` host with a pinned version, keeping the `--` before the command: `dotnet tool execute SeqMcp@<version> --yes -- errors --minutes 30`. Use the version the user has pinned elsewhere (for example in their MCP config); if you can't find one, ask rather than guessing. Don't use `dnx`.
+
 Every command takes `--env <name>` to choose the Seq environment (for example `--env local`). Leave it off to use the configured default.
 
 ## Workflow
