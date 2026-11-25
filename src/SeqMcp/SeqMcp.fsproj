@@ -12,10 +12,9 @@
     <RollForward>Major</RollForward>
 
     <!-- Footprint: the Web SDK defaults to Server GC (one heap per core), which is wasteful
-         for a one-shot CLI and a single-client MCP server. Workstation, non-concurrent GC
-         keeps both small. All rendering uses invariant culture, so ICU isn't needed. -->
+         for a one-shot CLI and a single-client MCP server; workstation GC keeps both small.
+         All rendering uses invariant culture, so ICU isn't needed. -->
     <ServerGarbageCollection>false</ServerGarbageCollection>
-    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
     <InvariantGlobalization>true</InvariantGlobalization>
 
     <Authors>Daniel Little</Authors>
@@ -27,7 +26,7 @@
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
-  <!-- F# compile order matters: Models -> Client -> Render -> Commands -> Tools -> Cli -> Program. -->
+  <!-- F# compile order matters: Models -> Config -> Client -> Render -> Commands -> Tools -> Cli -> Program. -->
   <ItemGroup>
     <Compile Include="Models.fs" />
     <Compile Include="Config.fs" />

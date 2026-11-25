@@ -8,6 +8,7 @@ module SeqMcp.Cli
 open System
 open System.Net.Http
 open System.Text.Json
+open System.Threading.Tasks
 open Microsoft.Extensions.Configuration
 
 /// An optional `--flag value` parameter for a command.
@@ -64,15 +65,77 @@ let specs =
         args = []
         opts = [] } ]
 
-/// Split args into ordered positionals and a `--key value` map.
-let private parseArgs (argv: string list) =
+/// A verb with its arguments checked against its spec.
+type ParsedCommand =
+    { spec: CliSpec
+      args: string list
+      flags: Map<string, string> }
+
+/// Split args into ordered positionals and a `--key value` map. A `--key` with no value
+/// after it is an error rather than a stray positional: a dangling `--env` must not
+/// silently fall back to the default environment.
+let private splitArgs (argv: string list) : Result<string list * Map<string, string>, string> =
     let rec loop pos flags =
         function
-        | [] -> List.rev pos, flags
-        | (k: string) :: v :: rest when k.StartsWith "--" -> loop pos (Map.add (k.Substring 2) v flags) rest
+        | [] -> Ok(List.rev pos, flags)
+        | (k: string) :: rest when k.StartsWith "--" ->
+            match rest with
+            | v :: rest' when not (v.StartsWith "--") -> loop pos (Map.add (k.Substring 2) v flags) rest'
+            | _ -> Error $"Option '{k}' needs a value."
         | x :: rest -> loop (x :: pos) flags rest
 
     loop [] Map.empty argv
+
+let private findSpec (cmd: string) =
+    specs
+    |> List.tryFind (fun s -> s.name = cmd)
+    |> Option.map Ok
+    |> Option.defaultValue (Error $"Unknown command '{cmd}'. Run `seq-mcp --help`.")
+
+/// Every option must be one the verb declares (or the global `--env`), so a typo such
+/// as `--minute` fails loudly instead of being ignored.
+let private checkFlags (spec: CliSpec) (flags: Map<string, string>) =
+    let allowed = "env" :: (spec.opts |> List.map (fun o -> o.name)) |> Set.ofList
+
+    flags
+    |> Map.keys
+    |> Seq.tryFind (allowed.Contains >> not)
+    |> function
+        | Some k -> Error $"Unknown option '--{k}' for '{spec.name}'. Run `seq-mcp --help`."
+        | None -> Ok flags
+
+/// Positionals must match the verb's declared args exactly: a missing id or an unquoted
+/// multi-word filter (whose tail would otherwise be dropped) is an error.
+let private checkArgs (spec: CliSpec) (args: string list) =
+    let usage = spec.name :: (spec.args |> List.map (sprintf "<%s>")) |> String.concat " "
+
+    match compare args.Length spec.args.Length with
+    | 0 -> Ok args
+    | n when n < 0 -> Error $"Missing argument. Usage: seq-mcp {usage}"
+    | _ -> Error $"Too many arguments (quote multi-word values). Usage: seq-mcp {usage}"
+
+/// Parse a verb and its arguments against `specs`. Pure, so it is unit-testable.
+let parseCommand (argv: string list) : Result<ParsedCommand, string> =
+    match argv with
+    | [] -> Error "No command given. Run `seq-mcp --help`."
+    | cmd :: rest ->
+        findSpec cmd
+        |> Result.bind (fun spec ->
+            splitArgs rest
+            |> Result.bind (fun (pos, flags) ->
+                checkFlags spec flags
+                |> Result.bind (fun flags ->
+                    checkArgs spec pos
+                    |> Result.map (fun args -> { spec = spec; args = args; flags = flags }))))
+
+/// Read an integer option, rejecting anything that isn't a positive whole number.
+let private flagInt (flags: Map<string, string>) (k: string) (dflt: int) : Result<int, string> =
+    match Map.tryFind k flags with
+    | None -> Ok dflt
+    | Some v ->
+        match Int32.TryParse v with
+        | true, n when n > 0 -> Ok n
+        | _ -> Error $"Option '--{k}' must be a positive whole number, got '{v}'."
 
 let private helpText () =
     let line (s: CliSpec) =
@@ -99,38 +162,48 @@ let private helpText () =
       "  seq-mcp --http         run as an MCP server over HTTP" ]
     |> String.concat "\n"
 
-/// Route one verb to the shared Commands core. `--env` picks the environment (blank
-/// → the configured default), resolved inside Commands against the registry.
-let private dispatch (client: SeqClient) (envs: SeqConfig.SeqEnvironments) cmd (pos: string list) (flags: Map<string, string>) =
-    let arg i = List.tryItem i pos |> Option.defaultValue ""
-    let flag k = Map.tryFind k flags |> Option.defaultValue null
+/// Route a parsed verb to the shared Commands core. Option values are validated here,
+/// before any config is loaded, so usage errors never depend on the environment.
+/// `--env` picks the environment (absent → the configured default), resolved inside
+/// Commands against the registry.
+let private toWork (p: ParsedCommand) : Result<SeqClient -> SeqConfig.SeqEnvironments -> Task<string>, string> =
+    let arg i = List.item i p.args // arity already checked by parseCommand
+    let flag k = Map.tryFind k p.flags |> Option.defaultValue null
     let env = flag "env"
 
-    let flagInt k d =
-        match Map.tryFind k flags with
-        | Some v ->
-            match Int32.TryParse v with
-            | true, n -> n
-            | _ -> d
-        | None -> d
-
-    match cmd with
-    | "query" -> Some(Commands.query client envs env (arg 0) (flag "from") (flag "to") (flag "signal"))
-    | "errors" -> Some(Commands.recentErrors client envs env (flagInt "minutes" 30))
-    | "search" -> Some(Commands.searchEvents client envs env (arg 0) (flagInt "count" 30) (flag "signal"))
-    | "event" -> Some(Commands.getEvent client envs env (arg 0))
-    | "signals" -> Some(Commands.listSignals client envs env (flag "filter"))
-    | "alerts" -> Some(Commands.listAlerts client envs env (flag "filter"))
-    | "alert" -> Some(Commands.getAlert client envs env (arg 0))
-    | "alert-state" -> Some(Commands.alertState client envs env)
-    | _ -> None
+    match p.spec.name with
+    | "query" -> Ok(fun c e -> Commands.query c e env (arg 0) (flag "from") (flag "to") (flag "signal"))
+    | "errors" -> flagInt p.flags "minutes" 30 |> Result.map (fun m c e -> Commands.recentErrors c e env m)
+    | "search" -> flagInt p.flags "count" 30 |> Result.map (fun n c e -> Commands.searchEvents c e env (arg 0) n (flag "signal"))
+    | "event" -> Ok(fun c e -> Commands.getEvent c e env (arg 0))
+    | "signals" -> Ok(fun c e -> Commands.listSignals c e env (flag "filter"))
+    | "alerts" -> Ok(fun c e -> Commands.listAlerts c e env (flag "filter"))
+    | "alert" -> Ok(fun c e -> Commands.getAlert c e env (arg 0))
+    | "alert-state" -> Ok(fun c e -> Commands.alertState c e env)
+    | other -> Error $"Command '{other}' is in specs but not wired up." // guards specs/dispatch drift
 
 /// The CLI is one-shot, so it skips the generic Host (DI, logging, hosted services) that
-/// the MCP transports need: config comes straight from environment variables (the same
-/// `SEQ__...` keys the servers read) and the SeqClient gets a plain HttpClient.
-/// This roughly halves per-call startup time and memory.
+/// the MCP transports need and builds the same configuration sources by hand:
+/// appsettings.json and appsettings.{DOTNET_ENVIRONMENT}.json from the current directory,
+/// then environment variables (which win). The SeqClient gets a plain HttpClient.
+/// This cuts per-call startup by about a third.
 let private loadEnvironments () =
-    ConfigurationBuilder().AddEnvironmentVariables().Build() |> SeqConfig.parse
+    let envName =
+        match Environment.GetEnvironmentVariable "DOTNET_ENVIRONMENT" with
+        | null | "" -> "Production"
+        | name -> name
+
+    ConfigurationBuilder()
+        .SetBasePath(IO.Directory.GetCurrentDirectory())
+        .AddJsonFile("appsettings.json", optional = true)
+        .AddJsonFile($"appsettings.{envName}.json", optional = true)
+        .AddEnvironmentVariables()
+        .Build()
+    |> SeqConfig.parse
+
+let private fail (msg: string) =
+    eprintfn "%s" msg
+    1
 
 /// Entry point for the CLI path.
 let run (argv: string[]) : int =
@@ -143,23 +216,17 @@ let run (argv: string[]) : int =
     | "commands" :: _ ->
         printfn "%s" (JsonSerializer.Serialize(specs, JsonSerializerOptions(WriteIndented = true)))
         0
-    | cmd :: rest ->
-        match loadEnvironments () with
-        | Error msg ->
-            eprintfn "%s" msg
-            1
-        | Ok envs ->
-            use http = new HttpClient()
-            let pos, flags = parseArgs rest
+    | args ->
+        match parseCommand args |> Result.bind toWork with
+        | Error msg -> fail msg
+        | Ok work ->
+            match loadEnvironments () with
+            | Error msg -> fail msg
+            | Ok envs ->
+                use http = new HttpClient()
 
-            match dispatch (SeqClient http) envs cmd pos flags with
-            | None ->
-                eprintfn "Unknown command '%s'. Run `seq-mcp --help`." cmd
-                1
-            | Some work ->
                 try
-                    printfn "%s" (work.GetAwaiter().GetResult())
+                    printfn "%s" ((work (SeqClient http) envs).GetAwaiter().GetResult())
                     0
                 with ex ->
-                    eprintfn "Error: %s" ex.Message
-                    1
+                    fail $"Error: {ex.Message}"

@@ -23,6 +23,6 @@ Every command takes `--env <name>` to choose the Seq environment (for example `-
 ## Workflow
 
 - Start broad, then narrow. Use `query` with `group by` to find where the problem is, then `search` or `errors` to list events. Pass an event `Id` to `event` to see the full stack trace.
-- Quote filters and SQL in single-quoted shell strings when you can. Seq string literals already use single quotes, so wrap those in double quotes as in the examples above.
+- Wrap filters and SQL in double quotes, as in the examples above, because Seq string literals use single quotes. Inside double quotes the shell still expands `$` and backticks, so escape them (`\$`, `` \` ``). Quote multi-word values: the CLI rejects stray extra arguments.
 - If you're unsure of an option, `seq-mcp commands` prints the full command surface as JSON.
 - If a config error comes back (no environment configured), tell the user to set the `SEQ__...` variables (see the README) rather than guessing a URL.

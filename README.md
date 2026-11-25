@@ -113,7 +113,8 @@ An MCP server stays running for the whole Claude Code session. The CLI starts a 
 command and exits when it's done, so nothing sits in memory between queries. To switch from the MCP:
 
 1. Remove the MCP registration if you added one: `claude mcp remove seq`.
-2. Put the Seq settings in `~/.claude/settings.json` so every Bash command Claude runs inherits them:
+2. Give the CLI its Seq settings. The simplest way is the `env` block in `~/.claude/settings.json`,
+   which every Bash command Claude runs inherits:
 
    ```json
    {
@@ -126,12 +127,18 @@ command and exits when it's done, so nothing sits in memory between queries. To 
    }
    ```
 
-3. Install the bundled skill so Claude knows the CLI exists in any repo. It loads only when a
-   log question comes up:
+   Note that this puts the API key in the environment of *every* command Claude runs, in every
+   project, not just `seq-mcp`. If you'd rather scope it, use a read-only Seq API key, or put the
+   variables in a small wrapper script on your `PATH` that runs `seq-mcp` (`exec seq-mcp "$@"`).
+
+3. Install the skill so Claude knows the CLI exists in any repo. It loads only when a log question
+   comes up:
 
    ```sh
-   mkdir -p ~/.claude/skills && cp -r skills/seq ~/.claude/skills/
+   mkdir -p ~/.claude/skills/seq && curl -fsSL https://raw.githubusercontent.com/daniellittledev/seq-mcp/main/skills/seq/SKILL.md -o ~/.claude/skills/seq/SKILL.md
    ```
+
+   From a clone of this repo, `cp -r skills/seq ~/.claude/skills/` does the same.
 
 Optionally, allow the CLI without permission prompts by adding `"permissions": { "allow": ["Bash(seq-mcp:*)"] }` to the same settings file.
 
