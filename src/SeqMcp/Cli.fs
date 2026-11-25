@@ -6,11 +6,9 @@
 module SeqMcp.Cli
 
 open System
+open System.Net.Http
 open System.Text.Json
 open Microsoft.Extensions.Configuration
-open Microsoft.Extensions.DependencyInjection
-open Microsoft.Extensions.Hosting
-open Microsoft.Extensions.Logging
 
 /// An optional `--flag value` parameter for a command.
 type CliOpt =
@@ -127,10 +125,15 @@ let private dispatch (client: SeqClient) (envs: SeqConfig.SeqEnvironments) cmd (
     | "alert-state" -> Some(Commands.alertState client envs env)
     | _ -> None
 
-/// Entry point for the CLI path. `configureClient` registers the SeqClient and the
-/// environment registry the same way the server hosts do (passed in from Program.fs
-/// to keep one wiring); it returns an Error when the Seq configuration is invalid.
-let run (configureClient: IServiceCollection -> IConfiguration -> Result<unit, string>) (argv: string[]) : int =
+/// The CLI is one-shot, so it skips the generic Host (DI, logging, hosted services) that
+/// the MCP transports need: config comes straight from environment variables (the same
+/// `SEQ__...` keys the servers read) and the SeqClient gets a plain HttpClient.
+/// This roughly halves per-call startup time and memory.
+let private loadEnvironments () =
+    ConfigurationBuilder().AddEnvironmentVariables().Build() |> SeqConfig.parse
+
+/// Entry point for the CLI path.
+let run (argv: string[]) : int =
     match Array.toList argv with
     | []
     | "--help" :: _
@@ -141,20 +144,15 @@ let run (configureClient: IServiceCollection -> IConfiguration -> Result<unit, s
         printfn "%s" (JsonSerializer.Serialize(specs, JsonSerializerOptions(WriteIndented = true)))
         0
     | cmd :: rest ->
-        let builder = Host.CreateApplicationBuilder()
-        builder.Logging.ClearProviders() |> ignore // keep stdout clean for piping
-
-        match configureClient builder.Services builder.Configuration with
+        match loadEnvironments () with
         | Error msg ->
             eprintfn "%s" msg
             1
-        | Ok() ->
-            use host = builder.Build()
-            let client = host.Services.GetRequiredService<SeqClient>()
-            let envs = host.Services.GetRequiredService<SeqConfig.SeqEnvironments>()
+        | Ok envs ->
+            use http = new HttpClient()
             let pos, flags = parseArgs rest
 
-            match dispatch client envs cmd pos flags with
+            match dispatch (SeqClient http) envs cmd pos flags with
             | None ->
                 eprintfn "Unknown command '%s'. Run `seq-mcp --help`." cmd
                 1

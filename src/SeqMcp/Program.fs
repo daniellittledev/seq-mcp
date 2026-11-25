@@ -76,4 +76,4 @@ let main args =
     //   neither  → run as a CLI (see Cli.specs / `seq-mcp --help`)
     if Array.contains "--stdio" args then runStdio args
     elif Array.contains "--http" args then runHttp args
-    else Cli.run tryConfigureSeq args
+    else Cli.run args
