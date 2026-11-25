@@ -81,6 +81,8 @@ environment named `prod`.
 
 **Upgrading to 0.2.0:** at least one environment must now be configured and the server fails fast otherwise, whereas 0.1.x silently defaulted to `http://localhost:5341`.
 
+**Upgrading to 0.3.0:** the CLI now rejects input it used to ignore or guess at: unknown options, an option with no value (such as a trailing `--env`), a missing or extra argument (quote multi-word filters), and non-numeric `--minutes` / `--count`. Each exits non-zero with a usage message.
+
 The API key is sent as the `X-Seq-ApiKey` header, and only to the environment it belongs to. It
 is optional if your Seq instance allows anonymous read; when the key is missing or Seq is
 unreachable, tool calls return a graceful error message rather than failing the server.
@@ -107,7 +109,7 @@ won't start. Skip the global install and run the tool through the signed `dotnet
 pinned version instead (needs the .NET 10 SDK):
 
 ```powershell
-claude mcp add seq -s user -e SEQ__ENVIRONMENTS__PROD__SERVERURL=https://seq.example.com -e SEQ__ENVIRONMENTS__PROD__APIKEY=prod-api-key -- dotnet tool execute SeqMcp@0.2.0 --yes -- --stdio
+claude mcp add seq -s user -e SEQ__ENVIRONMENTS__PROD__SERVERURL=https://seq.example.com -e SEQ__ENVIRONMENTS__PROD__APIKEY=prod-api-key -- dotnet tool execute SeqMcp@0.3.0 --yes -- --stdio
 ```
 
 - Use `dotnet` as the command, not `dnx`. `dnx` is a `.cmd` file, which Claude Code can't start
@@ -167,10 +169,10 @@ If the `seq-mcp` launcher is blocked (see [Windows with Defender attack surface 
 run each CLI command through the `dotnet` host instead. The skill knows to fall back to this:
 
 ```sh
-dotnet tool execute SeqMcp@0.2.0 --yes -- errors --minutes 30
+dotnet tool execute SeqMcp@0.3.0 --yes -- errors --minutes 30
 ```
 
-The matching permission rule is `Bash(dotnet tool execute SeqMcp@0.2.0:*)`.
+The matching permission rule is `Bash(dotnet tool execute SeqMcp@0.3.0:*)`.
 
 ### Example MCP client config (HTTP)
 

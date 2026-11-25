@@ -8,7 +8,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>seq-mcp</ToolCommandName>
     <PackageId>SeqMcp</PackageId>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
     <RollForward>Major</RollForward>
 
     <!-- Footprint: the Web SDK defaults to Server GC (one heap per core), which is wasteful
